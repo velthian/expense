@@ -422,7 +422,7 @@ def process_account(account_cfg, conn) -> None:
         mail.login(imap_user, imap_pass)
         mail.select(mailbox)
 
-        since = (datetime.now() - timedelta(days=20)).strftime('%d-%b-%Y')
+        since = (datetime.now() - timedelta(days=5)).strftime('%d-%b-%Y')
         search_str = f'FROM "alerts@hdfcbank.bank.in" SINCE "{since}"'
         status, data = mail.uid('search', None, search_str)
 
