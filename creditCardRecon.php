@@ -14,7 +14,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST")
         case("csvUpload"):
         {
             $goodToUpload = FALSE;
-            $target_dir = "datafiles/";
+            $target_dir = __DIR__ . "/datafiles/";
             $source_file = $target_dir . basename($_FILES["fileToUpload"]["name"]);
             $fileType = strtolower(pathinfo($source_file,PATHINFO_EXTENSION));
             //CHECK IF FILE IS A VALID CSV FILE
@@ -31,9 +31,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST")
                 $target_file = 'stmtToProcess.csv';
                 
                 //check if file already exists
-                if (file_exists($target_file)) 
+                if (file_exists($target_dir . $target_file))
                 {
-                    unlink($target_file);
+                    unlink($target_dir . $target_file);
                 }
                 if (move_uploaded_file($_FILES["fileToUpload"]["tmp_name"], ($target_dir . $target_file))) 
                 {
