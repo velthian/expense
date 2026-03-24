@@ -14,7 +14,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST")
         case("csvUpload"):
         {
             $goodToUpload = FALSE;
-            $target_dir = "datafiles/";
+            $target_dir = __DIR__ . "/datafiles/";
             $source_file = $target_dir . basename($_FILES["fileToUpload"]["name"]);
             $fileType = strtolower(pathinfo($source_file,PATHINFO_EXTENSION));
             //CHECK IF FILE IS A VALID EXCEL FILE

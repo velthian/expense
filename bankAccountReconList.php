@@ -1,6 +1,9 @@
 <?php
-require '../investo/vendor/autoload.php';
-//require 'vendor/autoload.php';
+if (file_exists('../investo/vendor/autoload.php')) {
+    require '../investo/vendor/autoload.php';
+} else {
+    require 'vendor/autoload.php';
+}
 
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
