@@ -239,6 +239,8 @@
 }
 .bat-pair-side {
     padding: 10px 12px;
+    min-width: 0; /* prevent grid blowout from long merchant text */
+    overflow: hidden;
 }
 .bat-pair-side:first-child {
     border-right: 1px solid var(--border);
