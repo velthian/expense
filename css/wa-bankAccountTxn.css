@@ -1,0 +1,345 @@
+/* ─── Bank Account Reconciliation Page ─── */
+
+:root {
+    --teal:      #00b8cc;
+    --teal-dark: #0097aa;
+    --blue:      #007aff;
+    --red:       #ff3b30;
+    --green:     #34c759;
+    --amber:     #ff9500;
+    --surface:   #f2f2f7;
+    --card-bg:   #ffffff;
+    --border:    #e0e0e5;
+    --text-main: #1c1c1e;
+    --text-sub:  #6e6e73;
+    --radius:    12px;
+    --shadow:    0 2px 12px rgba(0,0,0,0.08);
+}
+
+/* ── Page header ── */
+#bat-header {
+    background: linear-gradient(135deg, var(--teal-dark), var(--teal));
+    color: #fff;
+    text-align: center;
+    padding: 20px 16px 6px;
+}
+#bat-header h1 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+}
+#bat-header .bat-dates {
+    font-size: 13px;
+    opacity: 0.85;
+    margin-top: 4px;
+    padding-bottom: 16px;
+}
+
+/* ── Summary card ── */
+#bat-summary {
+    background: var(--card-bg);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    margin: 16px 16px 0;
+    padding: 20px;
+}
+.bat-stat-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px 20px;
+    margin-bottom: 16px;
+}
+.bat-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.bat-stat-label {
+    font-size: 11px;
+    color: var(--text-sub);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    font-weight: 500;
+}
+.bat-stat-value {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-main);
+}
+.bat-recon-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+}
+.bat-recon-badge.ok   { background: #e8f9ed; color: var(--green); }
+.bat-recon-badge.fail { background: #fff0ee; color: var(--red); }
+
+/* ── Section headings ── */
+.bat-section {
+    margin: 16px 16px 0;
+}
+.bat-section-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    background: var(--card-bg);
+    border-radius: var(--radius) var(--radius) 0 0;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    user-select: none;
+}
+.bat-section-header .bat-section-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-main);
+    flex: 1;
+}
+.bat-section-header .bat-count {
+    font-size: 12px;
+    font-weight: 600;
+    padding: 2px 9px;
+    border-radius: 20px;
+    background: var(--surface);
+    color: var(--text-sub);
+}
+.bat-section-header .bat-count.warn { background: #fff3e0; color: var(--amber); }
+.bat-section-header .bat-count.ok   { background: #e8f9ed; color: var(--green); }
+.bat-toggle-icon {
+    font-size: 16px;
+    color: var(--text-sub);
+    transition: transform 0.2s;
+    width: 20px;
+    text-align: center;
+}
+.bat-toggle-icon.collapsed { transform: rotate(-90deg); }
+
+/* ── Two-column unreconciled layout ── */
+.bat-unrecon-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    background: var(--card-bg);
+    border-radius: 0 0 var(--radius) var(--radius);
+    border-top: none;
+    overflow: hidden;
+}
+.bat-col {
+    padding: 12px;
+    border-right: 1px solid var(--border);
+    min-width: 0; /* prevent grid blowout */
+    overflow: hidden;
+}
+.bat-col:last-child { border-right: none; }
+.bat-col-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: var(--text-sub);
+    padding: 4px 4px 10px;
+}
+
+/* ── Row cards ── */
+.bat-row-card {
+    background: var(--surface);
+    border-radius: 8px;
+    margin-bottom: 8px;
+    overflow: hidden;
+    border-left: 3px solid transparent;
+}
+.bat-row-card.csv-card { border-left-color: var(--red); }
+.bat-row-card.db-card  { border-left-color: var(--blue); }
+
+.bat-row-main {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 10px;
+    min-width: 0;
+}
+.bat-row-date    { font-size: 11px; color: var(--text-sub); min-width: 60px; }
+.bat-row-amount  { font-size: 13px; font-weight: 600; color: var(--text-main); min-width: 80px; text-align: right; }
+.bat-row-merchant{
+    font-size: 12px;
+    color: var(--text-main);
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.bat-row-uid {
+    font-size: 10px;
+    color: var(--text-sub);
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 6px;
+    margin-right: 4px;
+}
+
+/* ── Action buttons ── */
+.bat-actions {
+    display: flex;
+    gap: 6px;
+    padding: 0 10px 9px;
+}
+.bat-btn {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    line-height: 1.4;
+    width: auto !important; /* override master.css .csvAdd { width: 100% } */
+    flex-shrink: 0;
+}
+.bat-btn-add   { background: #e8f0ff; color: var(--blue); }
+.bat-btn-recon { background: #fff0ee; color: var(--red); }
+.bat-btn-del   { background: #fff0ee; color: var(--red); }
+.bat-btn-save  { background: var(--blue); color: #fff; }
+.bat-btn:active { opacity: 0.75; }
+
+/* ── Inline reconcile input ── */
+.bat-recon-input-row {
+    display: none;
+    align-items: center;
+    gap: 6px;
+    padding: 0 10px 9px;
+}
+.bat-recon-input-row input {
+    flex: 1;
+    font-size: 12px;
+    padding: 5px 8px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    outline: none;
+}
+.bat-recon-input-row input:focus { border-color: var(--blue); }
+
+/* ── Matched pairs section ── */
+.bat-matched-list {
+    background: var(--card-bg);
+    border-radius: 0 0 var(--radius) var(--radius);
+    padding: 12px;
+}
+.bat-pair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 10px;
+    overflow: hidden;
+}
+.bat-pair-side {
+    padding: 10px 12px;
+}
+.bat-pair-side:first-child {
+    border-right: 1px solid var(--border);
+    border-left: 3px solid var(--red);
+}
+.bat-pair-side:last-child {
+    border-left: 3px solid var(--blue);
+}
+.bat-pair-label {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-sub);
+    margin-bottom: 6px;
+}
+.bat-pair-date     { font-size: 11px; color: var(--text-sub); }
+.bat-pair-amount   { font-size: 14px; font-weight: 700; color: var(--text-main); margin: 2px 0; }
+.bat-pair-merchant { font-size: 12px; color: var(--text-main); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── Add-to-DB modal ── */
+#creditCardReconCateg {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: #fff;
+    padding: 24px;
+    border-radius: 16px;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.18);
+    z-index: 1000;
+    min-width: 320px;
+    max-width: 420px;
+    width: 90%;
+    display: none;
+    flex-direction: column;
+    gap: 12px;
+}
+#closeReconModal {
+    position: absolute;
+    top: 12px;
+    right: 14px;
+    background: var(--surface);
+    border: none;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 14px;
+    color: var(--text-sub);
+}
+#closeReconModal:hover { background: var(--border); }
+#creditCardReconHdr {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-main);
+    padding-right: 30px;
+}
+.select-wrapper select {
+    width: 100%;
+    padding: 9px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 13px;
+    background: var(--surface);
+    appearance: none;
+    outline: none;
+}
+.select-wrapper select:focus { border-color: var(--blue); }
+
+.modal-txn-info {
+    background: var(--surface);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 13px;
+}
+.modal-txn-info .ccr01 { font-weight: 600; color: var(--text-sub); margin-right: 8px; font-size: 11px; text-transform: uppercase; }
+.modal-txn-info .ccr02 { color: var(--text-main); font-weight: 500; }
+
+#creditCardAdd {
+    background: var(--blue);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 11px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 4px;
+}
+#creditCardAdd:active { opacity: 0.85; }
+
+/* ── responsive ── */
+@media (max-width: 600px) {
+    .bat-unrecon-grid { grid-template-columns: 1fr; }
+    .bat-col { border-right: none; border-bottom: 1px solid var(--border); }
+    .bat-pair { grid-template-columns: 1fr; }
+    .bat-pair-side:first-child { border-right: none; border-bottom: 1px solid var(--border); }
+    #bat-summary { margin: 12px 8px 0; }
+    .bat-section { margin: 12px 8px 0; }
+}
