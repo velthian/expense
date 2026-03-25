@@ -72,9 +72,16 @@ class reconcileCsvDb
         {
             if($calledFrom === 'cc')
             {
-                $statementDatesArray = $this->computeStatementPeriod($statementDate);
-                $beginDate = $statementDatesArray['period_start'];
-                $lastDate = $statementDatesArray['period_end'];
+                $rangeStmt = $conn->prepare("SELECT MIN(date), MAX(date) FROM statement_lines WHERE statement_id = ?");
+                if (!$rangeStmt) throw new RuntimeException('Prepare failed: ' . $conn->error);
+                $rangeStmt->bind_param('i', $statementId);
+                $rangeStmt->execute();
+                $rangeStmt->bind_result($minLineDate, $maxLineDate);
+                $rangeStmt->fetch();
+                $rangeStmt->close();
+
+                $beginDate = (new DateTime($minLineDate))->modify('-1 day')->format('Y-m-d');
+                $lastDate  = (new DateTime($maxLineDate))->modify('+1 day')->format('Y-m-d');
             }
             else
             {
@@ -209,23 +216,54 @@ class reconcileCsvDb
 
             if(!empty($csvArray))
             {
-                foreach ($csvArray as &$row) 
+                // For already-reconciled lines, fetch the matching transactions directly by uid
+                // (statement_id is the authority — date range is irrelevant here)
+                $reconciledTxnMap = [];
+                $reconciledUids = array_values(array_filter(array_column($csvArray, 'uid'), fn($u) => !is_null($u)));
+
+                if (!empty($reconciledUids))
                 {
-                    if ($row['reconciled'] == 1 && !is_null($row['uid'])) 
+                    $placeholders = implode(',', array_fill(0, count($reconciledUids), '?'));
+                    $types = str_repeat('i', count($reconciledUids));
+                    $mapStmt = $conn->prepare(
+                        "SELECT t.date, m.merchant_name, t.amount, t.uid, t.reconciled
+                         FROM transactions t
+                         JOIN merchant m ON t.merchant_id = m.merchant_id
+                         WHERE t.uid IN ($placeholders)"
+                    );
+                    if ($mapStmt)
                     {
-                        foreach ($dbArray as &$db) 
+                        $mapStmt->bind_param($types, ...$reconciledUids);
+                        $mapStmt->execute();
+                        $res = $mapStmt->get_result();
+                        while ($r = $res->fetch_assoc())
                         {
-                            if ($db['uid'] === $row['uid']) 
-                            {
-                                $row['matched'] = true;
-                                $csvReconciledArray[] = $row;       // goes into first array
-                                $db['matched'] = true;              // ✅ create new element dynamically
-                                $dbReconciledArray[] = $db;
-                            }
+                            $reconciledTxnMap[(int)$r['uid']] = [
+                                'date'       => $r['date'],
+                                'amount'     => $r['amount'],
+                                'merchant'   => $r['merchant_name'],
+                                'reconciled' => $r['reconciled'],
+                                'uid'        => (int)$r['uid'],
+                                'matched'    => true,
+                            ];
                         }
-                        unset($db);
-                    } 
-                    else 
+                        $mapStmt->close();
+                    }
+                }
+
+                foreach ($csvArray as &$row)
+                {
+                    if ($row['reconciled'] == 1 && !is_null($row['uid']))
+                    {
+                        $uid = (int)$row['uid'];
+                        if (isset($reconciledTxnMap[$uid]))
+                        {
+                            $row['matched'] = true;
+                            $csvReconciledArray[] = $row;
+                            $dbReconciledArray[]  = $reconciledTxnMap[$uid];
+                        }
+                    }
+                    else
                     {
                         $csvUnReconciledArray[] = $row;   // everything else
                     }
@@ -342,6 +380,13 @@ class reconcileCsvDb
 
                 $csvUnReconciledArray = array_filter($csvUnReconciledArray, fn($un) => $un['matched'] === false);
                 $dbUnReconciledArray = array_filter($dbUnReconciledArray, fn($un) => $un['matched'] === false);
+
+                // Sort reconciled pairs together by statement date asc
+                if (!empty($csvReconciledArray))
+                {
+                    $order = array_column($csvReconciledArray, 'date');
+                    array_multisort($order, SORT_ASC, $csvReconciledArray, $dbReconciledArray);
+                }
             }
         }
         // Sum of all imported lines for this statement (debits positive, credits negative)

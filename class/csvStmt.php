@@ -21,6 +21,7 @@ class csvStmt
             $inTransactions = false;            // simple state flag
             $failedCounter = 0;
             $rowSeq = 0;                        // sequential position within this file
+            $skipLines = false;
 
             while (($line = fgets($handle)) !== FALSE)
             {
@@ -84,10 +85,17 @@ class csvStmt
                             break;
                     }
 
-                    if ($statement_id === null && $header['statement_date'] && $header['card_last4']) 
+                    if ($statement_id === null && $header['statement_date'] && $header['card_last4'])
                     {
-                        $statement_id = $this->storeStatementMetaData($conn, $header);  // <-- insert or fetch existing
+                        $result       = $this->storeStatementMetaData($conn, $header);
+                        $statement_id = $result['statement_id'];
+                        $skipLines    = $result['skip_lines'];
                         $inTransactions = true;
+
+                        if ($skipLines)
+                        {
+                            break; // same file already imported — nothing left to do
+                        }
                     }
                     else
                     {
@@ -185,44 +193,57 @@ class csvStmt
         $fingerprint     = $header['file_fingerprint'] ?? null;
         $totalAmountDue  = $header['total_amount_due'] ?? null;
 
-        $sql = "
-            INSERT INTO statements
-                (statement_date, username, card_number, source_filename, file_fingerprint, total_amount_due)
-            VALUES
-                (?, ?, ?, ?, ?, ?)
-            ON DUPLICATE KEY UPDATE
-                -- Make mysqli->insert_id return the existing row's statement_id
-                statement_id = LAST_INSERT_ID(statement_id),
-                -- Optional: refresh metadata on re-import
-                source_filename = VALUES(source_filename),
-                file_fingerprint = VALUES(file_fingerprint),
-                total_amount_due = VALUES(total_amount_due)
-        ";
+        // Check if a statement already exists for this period
+        $chk = $conn->prepare("SELECT statement_id, file_fingerprint FROM statements WHERE username = ? AND card_number = ? AND statement_date = ? LIMIT 1");
+        if (!$chk) throw new RuntimeException('Prepare failed: ' . $conn->error);
+        $chk->bind_param("sss", $username, $cardLast4, $statementDate);
+        $existingId          = null;
+        $existingFingerprint = null;
+        $chk->execute();
+        $chk->bind_result($existingId, $existingFingerprint);
+        $found = $chk->fetch();
+        $chk->close();
 
-        $stmt = $conn->prepare($sql);
-        if (!$stmt) {
-            throw new RuntimeException('Prepare failed: ' . $conn->error);
+        if ($found)
+        {
+            if ($existingFingerprint === $fingerprint)
+            {
+                // Same file — skip only if lines are actually present
+                $lineChk = $conn->prepare("SELECT 1 FROM statement_lines WHERE statement_id = ? LIMIT 1");
+                if (!$lineChk) throw new RuntimeException('Prepare failed: ' . $conn->error);
+                $lineChk->bind_param("i", $existingId);
+                $lineChk->execute();
+                $hasLines = (bool)$lineChk->fetch();
+                $lineChk->close();
+
+                return ['statement_id' => $existingId, 'skip_lines' => $hasLines];
+            }
+
+            // Different file for same period — wipe existing lines and refresh metadata
+            $del = $conn->prepare("DELETE FROM statement_lines WHERE statement_id = ?");
+            if (!$del) throw new RuntimeException('Prepare failed: ' . $conn->error);
+            $del->bind_param("i", $existingId);
+            $del->execute();
+            $del->close();
+
+            $upd = $conn->prepare("UPDATE statements SET source_filename = ?, file_fingerprint = ?, total_amount_due = ? WHERE statement_id = ?");
+            if (!$upd) throw new RuntimeException('Prepare failed: ' . $conn->error);
+            $upd->bind_param("ssdi", $srcFile, $fingerprint, $totalAmountDue, $existingId);
+            $upd->execute();
+            $upd->close();
+
+            return ['statement_id' => $existingId, 'skip_lines' => false];
         }
 
-        $stmt->bind_param(
-            "sssssd",
-            $statementDate,
-            $username,
-            $cardLast4,
-            $srcFile,
-            $fingerprint,
-            $totalAmountDue
-        );
-
-        if (!$stmt->execute()) {
-            error_log('Execute failed: ' . $stmt->error, 0);
-        }
-
-        // Works for both insert and duplicate: thanks to LAST_INSERT_ID trick
+        // Fresh insert
+        $ins = $conn->prepare("INSERT INTO statements (statement_date, username, card_number, source_filename, file_fingerprint, total_amount_due) VALUES (?, ?, ?, ?, ?, ?)");
+        if (!$ins) throw new RuntimeException('Prepare failed: ' . $conn->error);
+        $ins->bind_param("sssssd", $statementDate, $username, $cardLast4, $srcFile, $fingerprint, $totalAmountDue);
+        if (!$ins->execute()) error_log('Execute failed: ' . $ins->error, 0);
         $id = (int)$conn->insert_id;
+        $ins->close();
 
-        $stmt->close();
-        return $id;
+        return ['statement_id' => $id, 'skip_lines' => false];
     }
 
     private function storeStatementLines($conn, $row)

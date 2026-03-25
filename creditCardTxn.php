@@ -280,6 +280,7 @@ $('#creditCardAdd').click(function(){
         data: {sup_categ_id: sup_categ_id, category_id: category_id, desc: desc, amount: amount, date: date, mode: mode},
         success:function(result) 
         { 
+            console.log(result);
             if(result === '1')
             {
                 alert("Something went wrong");
@@ -288,7 +289,7 @@ $('#creditCardAdd').click(function(){
             {
                 $('#creditCardReconCateg').fadeOut();
                 $('.overlay').hide();
-                location.reload();
+                //location.reload();
             }
         }
         });
