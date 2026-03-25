@@ -12,12 +12,13 @@ class reconcileCsvDb
         $statementDate = null;
         $openingBalance = null;
         $closingBalance = null;
+        $totalAmountDue = null;
 
         if($calledFrom === 'cc')
         {
-            $sql = "SELECT statement_date 
-                    FROM statements 
-                    WHERE statement_id = ? 
+            $sql = "SELECT statement_date, total_amount_due
+                    FROM statements
+                    WHERE statement_id = ?
                     LIMIT 1";
         }
         else
@@ -50,7 +51,7 @@ class reconcileCsvDb
 
         if($calledFrom === "cc")
         {
-            $stmt->bind_result($statementDate);            
+            $stmt->bind_result($statementDate, $totalAmountDue);
         }
         else
         {
@@ -343,7 +344,23 @@ class reconcileCsvDb
                 $dbUnReconciledArray = array_filter($dbUnReconciledArray, fn($un) => $un['matched'] === false);
             }
         }
-        return ['csvReconciledArray' => $csvReconciledArray, 'csvUnReconciledArray' => $csvUnReconciledArray, 'dbReconciledArray' => $dbReconciledArray, 'dbUnReconciledArray' => $dbUnReconciledArray, 'beginDate' =>$beginDate, 'lastDate' => $lastDate, 'opening_balance' => $openingBalance, 'closing_balance' => $closingBalance];
+        // Sum of all imported lines for this statement (debits positive, credits negative)
+        $sumOfLines = null;
+        if($calledFrom === 'cc')
+        {
+            $sumStmt = $conn->prepare("SELECT COALESCE(SUM(amount), 0) FROM statement_lines WHERE statement_id = ? AND merchant_name NOT LIKE '%CREDIT CARD PAYMENT%'");
+            if($sumStmt)
+            {
+                $sumStmt->bind_param('i', $statementId);
+                $sumStmt->execute();
+                $sumStmt->bind_result($sumOfLines);
+                $sumStmt->fetch();
+                $sumStmt->close();
+                $sumOfLines = (float)$sumOfLines;
+            }
+        }
+
+        return ['csvReconciledArray' => $csvReconciledArray, 'csvUnReconciledArray' => $csvUnReconciledArray, 'dbReconciledArray' => $dbReconciledArray, 'dbUnReconciledArray' => $dbUnReconciledArray, 'beginDate' => $beginDate, 'lastDate' => $lastDate, 'opening_balance' => $openingBalance, 'closing_balance' => $closingBalance, 'total_amount_due' => $totalAmountDue, 'sum_of_lines' => $sumOfLines];
     }
 
         private function amtKey($val): string 

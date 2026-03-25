@@ -14,11 +14,13 @@ class csvStmt
                 'card_last4'           => null,     // "2991",
                 'source_filename'      => basename($csvFile),
                 'file_fingerprint'     => hash_file('sha256', $csvFile),
-                'statement_date'       => null,     // ISO (often your period end)       
+                'statement_date'       => null,     // ISO (often your period end)
+                'total_amount_due'     => null,
             ];
 
             $inTransactions = false;            // simple state flag
             $failedCounter = 0;
+            $rowSeq = 0;                        // sequential position within this file
 
             while (($line = fgets($handle)) !== FALSE)
             {
@@ -61,14 +63,19 @@ class csvStmt
                                 if(strtolower($key) == 'statement date')
                                 {
                                     $dateObj = DateTime::createFromFormat('d/m/Y', trim($val));
-                                    if ($dateObj) 
+                                    if ($dateObj)
                                     {
                                         $header['statement_date'] = $dateObj->format('Y-m-d'); // → 2025-09-25
-                                    } 
-                                    else 
+                                    }
+                                    else
                                     {
                                         $header['statement_date'] = null; // or handle gracefully
                                     }
+                                }
+
+                                if(strtolower($key) == 'total amount due')
+                                {
+                                    $header['total_amount_due'] = (float) str_replace([',', ' '], '', trim($val));
                                 }
                                 break;
                             }
@@ -137,7 +144,7 @@ class csvStmt
 
                         //Now we have Date, Amount and Merchant from the CSV file
                         $tempArray = array();
-                        $tempArray = array('statement_id' => $statement_id, 'date' => $date, 'amount' => $amount, 'merchant' => $merchant, 'reconciled' => 'no', 'uid' => '');
+                        $tempArray = array('statement_id' => $statement_id, 'seq' => $rowSeq++, 'date' => $date, 'amount' => $amount, 'merchant' => $merchant, 'reconciled' => 'no', 'uid' => '');
                         
                         try 
                         {
@@ -171,23 +178,25 @@ class csvStmt
 
     private function storeStatementMetaData($conn, $header)
     {
-        $statementDate = $header['statement_date'];   // 'Y-m-d'
-        $username      = trim($header['username']);
-        $cardLast4     = trim($header['card_last4']);
-        $srcFile       = $header['source_filename'] ?? null;
-        $fingerprint   = $header['file_fingerprint'] ?? null;
+        $statementDate   = $header['statement_date'];   // 'Y-m-d'
+        $username        = trim($header['username']);
+        $cardLast4       = trim($header['card_last4']);
+        $srcFile         = $header['source_filename'] ?? null;
+        $fingerprint     = $header['file_fingerprint'] ?? null;
+        $totalAmountDue  = $header['total_amount_due'] ?? null;
 
         $sql = "
             INSERT INTO statements
-                (statement_date, username, card_number, source_filename, file_fingerprint)
+                (statement_date, username, card_number, source_filename, file_fingerprint, total_amount_due)
             VALUES
-                (?, ?, ?, ?, ?)
+                (?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
                 -- Make mysqli->insert_id return the existing row's statement_id
                 statement_id = LAST_INSERT_ID(statement_id),
                 -- Optional: refresh metadata on re-import
                 source_filename = VALUES(source_filename),
-                file_fingerprint = VALUES(file_fingerprint)
+                file_fingerprint = VALUES(file_fingerprint),
+                total_amount_due = VALUES(total_amount_due)
         ";
 
         $stmt = $conn->prepare($sql);
@@ -196,12 +205,13 @@ class csvStmt
         }
 
         $stmt->bind_param(
-            "sssss",
+            "sssssd",
             $statementDate,
             $username,
             $cardLast4,
             $srcFile,
-            $fingerprint
+            $fingerprint,
+            $totalAmountDue
         );
 
         if (!$stmt->execute()) {
@@ -223,6 +233,7 @@ class csvStmt
         $insertedId = null;
 
         $statementId  = (int)($row['statement_id'] ?? 0);
+        $seq          = (int)($row['seq'] ?? 0);
         
         $dateIn = trim((string)($row['date'] ?? ''));
         $date   = null;
@@ -252,10 +263,10 @@ class csvStmt
         }
 
         $sql = "
-            INSERT INTO statement_lines 
-                (statement_id, date, amount, merchant_name, reconciled, uid)
-            VALUES (?, ?, ?, ?, ?, ?)
-            ON DUPLICATE KEY UPDATE 
+            INSERT INTO statement_lines
+                (statement_id, seq, date, amount, merchant_name, reconciled, uid)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE
                 line_id = LAST_INSERT_ID(line_id)
         ";
 
@@ -266,8 +277,9 @@ class csvStmt
         }
 
         // types: i = int, s = string, d = double
-        $ok = $stmt->bind_param("isdsii",
+        $ok = $stmt->bind_param("iisdsii",
             $statementId,
+            $seq,
             $date,
             $amount,
             $merchant,
