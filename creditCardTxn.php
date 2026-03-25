@@ -24,10 +24,21 @@ if($statement_id !== null && $statement_id !== '')
         $dbUnReconciledArray = $reconArray['dbUnReconciledArray'];
         $beginDate = date('d M y', strtotime($reconArray['beginDate']));
         $lastDate = date('d M y', strtotime($reconArray['lastDate']));
+        $totalAmountDue = $reconArray['total_amount_due'];
+        $sumOfLines = $reconArray['sum_of_lines'];
     }
     ?>
     <div id="ccReconTitle">CREDIT CARD RECONCILIATION</div>
     <div id="statementDates"><?php echo($beginDate . " - " . $lastDate);?></div>
+    <?php if($totalAmountDue !== null && $sumOfLines !== null):
+        $match = (abs($totalAmountDue - $sumOfLines) < 1.0);
+    ?>
+    <div id="ccAmountCheck" class="<?php echo $match ? 'ccAmountMatch' : 'ccAmountMismatch'; ?>">
+        <span>Statement Total Due: <?php echo number_format($totalAmountDue, 2); ?></span>
+        <span>Sum of Imported Transactions: <?php echo number_format($sumOfLines, 2); ?></span>
+        <span><?php echo $match ? '✔ Amounts match' : '⚠ Mismatch — difference: ' . number_format(abs($totalAmountDue - $sumOfLines), 2); ?></span>
+    </div>
+    <?php endif; ?>
     <div class="creditCardReconContainer">
         <div class="creditCardReconColumnList">
             <div class="creditCardReconSeparator">
