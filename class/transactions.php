@@ -50,6 +50,8 @@ class transactions {
                 $date_from = new DateTime($date_from);
                 $date_from = $date_from->format('Y-m-01');
 
+                $ccStmtInfo = $this->getCcStatementInfo($conn, $loginid, $date_from);
+
                 for($k=0; $k < $num_rows0; $k++)
                 {
                     $row0 = $result0->fetch_assoc();
@@ -74,7 +76,7 @@ class transactions {
                         $reconciled_cat_amt = 0;
                         $categ_budget = 0;
                         
-                        $returnCatData = $this->getCategoryData($conn, $cat, $filter, $sup_cat_id, $date_from);
+                        $returnCatData = $this->getCategoryData($conn, $cat, $filter, $sup_cat_id, $date_from, $ccStmtInfo);
 
                         if ($returnCatData === null) 
                         {
@@ -109,9 +111,14 @@ class transactions {
             } 
         }
 
+        // Override CC summary with statement total if a statement was found
+        if (isset($ccStmtInfo) && $ccStmtInfo['statement_id'] !== null) {
+            $super_credit_card_amt = $this->getCcStatementTotalAmount($conn, $ccStmtInfo['statement_id']);
+        }
+
         //GET THIS MONTH'S UNBILLED (TO BE SHOWN IN NEXT MONTH PAGE) CREDIT CARD AMOUNT
         $unbilledNext = 0;
-        
+
         $date_arr = $this->getCycleDates($date_from);
         
         $next_from = $date_arr[0];
@@ -124,7 +131,7 @@ class transactions {
         return array('key_expenses' => $expensesThatMatter, 'total_monthly_spend' => $totalMonthlySpend, 'data' => $finalArrayToReturn, 'allSupCats' => $allSupCats, 'super_credit_card_amt' => $super_credit_card_amt, 'unbilled_next' => $unbilledNext);
     }
     
-    private function getCategoryData($conn, $cat, $filter, $sup_cat_id, $date_from)
+    private function getCategoryData($conn, $cat, $filter, $sup_cat_id, $date_from, $ccStmtInfo = null)
     {
         $cat_id = '';
         $cat_desc = '';
@@ -192,11 +199,16 @@ class transactions {
         // ----------------------
         // 2) Credit-card query
         // ----------------------
-        if ($wantCC) 
+        if ($wantCC)
         {
-            include_once('class/ccDates.php');
-            $cc = new ccDates();
-            [$cc_from, $cc_to] = $cc->stmtDate($date_from, 'p');
+            if ($ccStmtInfo !== null) {
+                $cc_from = $ccStmtInfo['from'];
+                $cc_to   = $ccStmtInfo['to'];
+            } else {
+                include_once('class/ccDates.php');
+                $cc = new ccDates();
+                [$cc_from, $cc_to] = $cc->stmtDate($date_from, 'p');
+            }
 
             $sqlCC = "SELECT t.uid, t.merchant_id, m.merchant_name, t.amount, t.date, t.mode, 
                     t.super_category_id, t.reconciled
@@ -262,13 +274,7 @@ class transactions {
             throw new Exception("Prepare failed: " . $conn->error);
         }
         
-        if (!$stmt->bind_param($types,
-            $params[0],
-            $params[1],
-            $params[2],
-            $params[3], //cat_id
-            $params[4]
-        )) 
+        if (!$stmt->bind_param($types, ...$params))
         {
             throw new Exception("Bind failed: " . $stmt->error);
         }
@@ -1082,6 +1088,64 @@ class transactions {
         $stmt->close();
 
         return $found ? (int)$statementId : null; // null if not found
+    }
+
+    private function getCcStatementInfo(mysqli $conn, string $loginid, string $date_from): array
+    {
+        // Find the CC statement whose statement_date falls in the previous calendar month
+        $prevMonth = (new DateTime($date_from))->modify('-1 month');
+        $prevFrom  = $prevMonth->format('Y-m-01');
+        $prevTo    = $prevMonth->format('Y-m-t');
+
+        $stmt = $conn->prepare(
+            "SELECT statement_id FROM statements WHERE username = ? AND statement_date BETWEEN ? AND ? LIMIT 1"
+        );
+        $stmt->bind_param("sss", $loginid, $prevFrom, $prevTo);
+        $stmt->execute();
+        $row = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+
+        if (!$row) {
+            // No statement uploaded — fall back to ccDates calendar math
+            include_once('class/ccDates.php');
+            $cc = new ccDates();
+            [$cc_from, $cc_to] = $cc->stmtDate($date_from, 'p');
+            return ['statement_id' => null, 'from' => $cc_from, 'to' => $cc_to];
+        }
+
+        $statementId = (int)$row['statement_id'];
+
+        // Get the actual date range from the imported statement lines
+        $stmt2 = $conn->prepare(
+            "SELECT MIN(date) AS min_date, MAX(date) AS max_date FROM statement_lines WHERE statement_id = ?"
+        );
+        $stmt2->bind_param("i", $statementId);
+        $stmt2->execute();
+        $range = $stmt2->get_result()->fetch_assoc();
+        $stmt2->close();
+
+        if (empty($range['min_date'])) {
+            // Statement row exists but has no lines yet — fall back to ccDates
+            include_once('class/ccDates.php');
+            $cc = new ccDates();
+            [$cc_from, $cc_to] = $cc->stmtDate($date_from, 'p');
+            return ['statement_id' => $statementId, 'from' => $cc_from, 'to' => $cc_to];
+        }
+
+        return ['statement_id' => $statementId, 'from' => $range['min_date'], 'to' => $range['max_date']];
+    }
+
+    private function getCcStatementTotalAmount(mysqli $conn, int $statementId): float
+    {
+        $stmt = $conn->prepare(
+            "SELECT COALESCE(SUM(amount), 0) AS total FROM statement_lines
+             WHERE statement_id = ? AND merchant_name NOT LIKE '%CREDIT CARD PAYMENT%'"
+        );
+        $stmt->bind_param("i", $statementId);
+        $stmt->execute();
+        $row = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+        return (float)$row['total'];
     }
 
     private function getCycleDates($date)
