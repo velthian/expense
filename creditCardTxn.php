@@ -289,7 +289,7 @@ $('#creditCardAdd').click(function(){
             {
                 $('#creditCardReconCateg').fadeOut();
                 $('.overlay').hide();
-                //location.reload();
+                location.reload();
             }
         }
         });
